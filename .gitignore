@@ -1,0 +1,36 @@
+__pycache__/
+*.pyc
+
+# Generated blendshape data (large, transient)
+generated/
+
+# Input audio files
+wav_input/
+
+# Stray test/scratch files
+import time.py
+importtime.py
+keyword_list.py
+keywords.py
+move_mouse.py
+onviffiles
+text_to_face_1.py
+text_to_face_ADV.py
+text_to_face_Advanced.py
+text_to_face_Advanced_20250508-0017.py
+text_to_face_Advanced_v2.py
+text_to_face_Advanced_v2_20250510-0854.py
+text_to_face_Advanced_v2_20250510-0854_2.py
+twitch_llm.py
+youtube_llm.py
+zeep_test_1.py
+PyTapo.py
+cam_control_1_0.py
+cmove.py
+continuous_move.py
+discord_bot.py
+POST_Demo.html
+watcher_settings.ini
+utils/neurosyncclose.jpg
+utils/stt/_.txt
+utils/audio/play_audio - No Playback.py

@@ -1,8 +1,7 @@
 # This software is licensed under a **dual-license model**
 # For individuals and businesses earning **under $1M per year**, this software is licensed under the **MIT License**
 # Businesses or organizations with **annual revenue of $1,000,000 or more** must obtain permission to use this software commercially.
-# pylivelinkface.py
-# Hard work here done by https://github.com/JimWest/PyLiveLinkFace | 
+# pylivelinkface.py 
 
 from __future__ import annotations
 
@@ -15,6 +14,7 @@ import uuid
 
 from livelink.connect.dimension_scalars import scale_blendshapes_by_section 
 from livelink.connect.faceblendshapes import FaceBlendShape
+from livelink.connect.load_blendshape_config import load_blendshape_settings
 
 class PyLiveLinkFace:
     def __init__(self, name: str = "face1", uuid: str = str(uuid.uuid1()), fps=60, filter_size: int = 0) -> None:
@@ -24,13 +24,14 @@ class PyLiveLinkFace:
         self._filter_size = filter_size
         self._version = 6
 
-        self._scaling_factor_mouth = 1.0
-        self._scaling_factor_eyes = 1.0
-        self._scaling_factor_eyebrows = 0.6
-        self._scaling_factor_eyewide_left = 0.4
-        self._scaling_factor_eyewide_right = 0.4
-        self._scaling_factor_eyesquint_left = 1.0
-        self._scaling_factor_eyesquint_right = 1.0
+        blendshape_settings = load_blendshape_settings()
+        self._scaling_factor_mouth = blendshape_settings['mouth_scale']
+        self._scaling_factor_eyes = blendshape_settings['eye_scale']
+        self._scaling_factor_eyebrows = blendshape_settings['eyebrow_scale']
+        self._scaling_factor_eyewide_left = blendshape_settings['eyewide_scale']
+        self._scaling_factor_eyewide_right = blendshape_settings['eyewide_scale']
+        self._scaling_factor_eyesquint_left = blendshape_settings['eyesquint_scale']
+        self._scaling_factor_eyesquint_right = blendshape_settings['eyesquint_scale']
 
         now = datetime.datetime.now()
         timcode = Timecode(self.fps, f'{now.hour}:{now.minute}:{now.second}:{now.microsecond * 0.001}')

@@ -1,6 +1,56 @@
-# config.py
 import os
+import configparser
 
+# --- NEW: Robust, portable method to find the project root ---
+def find_project_root(marker_file='.project_root'):
+    """Walks up from the script's location to find the project root."""
+    try:
+        # Start from the directory of the current script
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        # Fallback for environments where __file__ is not defined
+        current_dir = os.getcwd()
+        
+    while True:
+        # Check if the anchor file exists in the current directory
+        if os.path.exists(os.path.join(current_dir, marker_file)):
+            return current_dir
+        # Go up one level
+        parent_dir = os.path.dirname(current_dir)
+        # If we have reached the top of the filesystem (e.g., "C:\"), stop
+        if parent_dir == current_dir:
+            return None
+        current_dir = parent_dir
+
+root_dir = find_project_root()
+if not root_dir:
+    # This will stop the script with a clear error if the anchor file is missing.
+    raise FileNotFoundError("Could not find the project root. Make sure a '.project_root' file exists in your main 'Gem-System' folder.")
+
+# Construct the full path to the settings file
+SETTINGS_FILE = os.path.join(root_dir, 'mcp_settings.ini')
+
+
+# --- Now, read the configuration ---
+config = configparser.ConfigParser()
+# Provide a safe default value
+default_neurosync_url = "http://127.0.0.1:9000/audio_to_blendshapes"
+neurosync_url_from_ini = default_neurosync_url
+
+if os.path.exists(SETTINGS_FILE):
+    try:
+        config.read(SETTINGS_FILE)
+        # Read the URL from the [Neurosync] section, using the default as a fallback
+        neurosync_url_from_ini = config.get('Neurosync', 'neurosync_local_url', fallback=default_neurosync_url)
+        print(f"✅ config.py: Successfully loaded settings from '{SETTINGS_FILE}'")
+    except Exception as e:
+        print(f"⚠️ config.py WARNING: Could not read Neurosync URL from settings file. Using default. Error: {e}")
+else:
+    # This branch is now less likely to be hit because of the check above, but is good for safety.
+    print(f"⚠️ config.py WARNING: Settings file not found. Using default Neurosync URL.")
+
+
+# --- Original settings from your script ---
 USE_LOCAL_LLM = True
 USE_STREAMING = True
 LLM_API_URL = "http://127.0.0.1:5050/generate_llama"
@@ -35,11 +85,8 @@ TRANSCRIPTION_SERVER_URL = "http://127.0.0.1:6969/transcribe"
 # ---------------------------
 # Embedding Configurations (new)
 # ---------------------------
-# Toggle between local embeddings and OpenAI embeddings.
 USE_OPENAI_EMBEDDING = False
-# Local embedding server URL:
 EMBEDDING_LOCAL_SERVER_URL = "http://127.0.0.1:7070/get_embedding"
-# OpenAI embedding model and size.
 EMBEDDING_OPENAI_MODEL = "text-embedding-3-small"
 LOCAL_EMBEDDING_SIZE = 768
 OPENAI_EMBEDDING_SIZE = 1536
@@ -48,7 +95,8 @@ OPENAI_EMBEDDING_SIZE = 1536
 # Neurosync API Configurations (new)
 # ---------------------------
 
-NEUROSYNC_LOCAL_URL = "http://127.0.0.1:5000/audio_to_blendshapes" # if using the realtime api below, you can still access this endpoint from it, just change the port to 6969
+# --- Use the value read from the INI file ---
+NEUROSYNC_LOCAL_URL = neurosync_url_from_ini
 
 # ---------------------------
 # TTS with Blendshapes Endpoint (new)
