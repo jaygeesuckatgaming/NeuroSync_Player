@@ -4,6 +4,8 @@ import warnings
 import time
 import configparser
 import sys
+import urllib.request
+import json
 from threading import Thread
 
 # --- Import sounddevice for audio device selection ---
@@ -54,16 +56,28 @@ if not root_dir:
 
 SETTINGS_FILE = os.path.join(root_dir, 'mcp_settings.ini')
 
-def get_playback_device_from_ini(config):
+def get_playback_device_from_config(cfg):
     try:
-        device_str = config.get('Audio', 'selected_output')
-        if device_str is None or device_str.lower() == 'none' or ']' not in device_str:
+        device_str = getattr(cfg, 'AUDIO_OUTPUT_DEVICE', '')
+        if not device_str or device_str.lower() == 'none' or ']' not in device_str:
             return None
         # Extract name after the [ID] part
         device_name = device_str.split('] ', 1)[1]
         return device_name
     except Exception:
         return None
+
+def notify_duck(action):
+    """Notify the main server to duck/unduck background music."""
+    try:
+        server_host = getattr(cfg, 'SERVER_HOST', '127.0.0.1')
+        server_port = getattr(cfg, 'SERVER_PORT', 5000)
+        url = f"http://{server_host}:{server_port}/api/music/{action}"
+        req = urllib.request.Request(url, data=b'{}', headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=2)
+    except Exception as e:
+        print(f"⚠️ Duck notify ({action}) failed: {e}")
+
 
 def delete_file_with_retry(filepath, max_retries=5, delay=0.2):
     for attempt in range(max_retries):
@@ -82,18 +96,15 @@ def delete_file_with_retry(filepath, max_retries=5, delay=0.2):
 
 if __name__ == "__main__":
     
-    config = configparser.ConfigParser()
-    if not os.path.exists(SETTINGS_FILE):
-        print(f"❌ FATAL ERROR: The settings file was not found: '{SETTINGS_FILE}'")
-        sys.exit(1)
-        
-    config.read(SETTINGS_FILE)
+    # Import config.py from the project root (single source of truth)
+    sys.path.insert(0, root_dir)
+    import config as cfg
     
     try:
-        target_file_path = config.get('Watcher', 'target_file_path')
+        target_file_path = getattr(cfg, 'TTS_OUTPUT_PATH', 'tts_output/server_output.wav')
         if not os.path.isabs(target_file_path):
             target_file_path = os.path.join(root_dir, target_file_path)
-        requested_name = get_playback_device_from_ini(config)
+        requested_name = get_playback_device_from_config(cfg)
     except Exception as e:
         print(f"❌ FATAL ERROR: Missing setting. Details: {e}")
         sys.exit(1)
@@ -181,13 +192,15 @@ if __name__ == "__main__":
                 
                 if ENABLE_EMOTE_CALLS:
                     EmoteConnect.send_emote("startspeaking")
-                
+
+                notify_duck("duck")
                 try:
                     process_wav_file(target_file_path, py_face, socket_connection, default_animation_thread)
                     print("✅ Processing complete.")
                 except Exception as e:
                     print(f"❌ Error during processing: {e}")
                 finally:
+                    notify_duck("unduck")
                     if ENABLE_EMOTE_CALLS:
                         EmoteConnect.send_emote("stopspeaking")
                     
