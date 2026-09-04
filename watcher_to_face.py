@@ -2,7 +2,6 @@ import os
 import pygame
 import warnings
 import time
-import configparser
 import sys
 import urllib.request
 import json
@@ -54,7 +53,8 @@ root_dir = find_project_root()
 if not root_dir:
     raise FileNotFoundError("Could not find the project root. Make sure a '.project_root' file exists in your main 'Gem-System' folder.")
 
-SETTINGS_FILE = os.path.join(root_dir, 'mcp_settings.ini')
+# Settings are read from config.py (the single source of truth, same file the
+# control panel writes to), NOT mcp_settings.ini.
 
 def get_playback_device_from_config(cfg):
     try:

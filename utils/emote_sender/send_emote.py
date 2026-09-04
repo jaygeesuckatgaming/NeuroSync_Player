@@ -3,8 +3,8 @@
 # Businesses or organizations with **annual revenue of $1,000,000 or more** must obtain permission to use this software commercially.
 
 import socket
-import configparser
 import os
+import sys
 
 class EmoteConnect:
     server_address = "127.0.0.1"
@@ -13,31 +13,18 @@ class EmoteConnect:
     
     @classmethod
     def load_settings(cls):
-        """Load OSC settings from mcp_settings.ini [OSC] section"""
+        """Load OSC settings from config.py (single source of truth)."""
         try:
             script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             root_dir = os.path.dirname(script_dir)
-            ini_path = os.path.join(root_dir, 'mcp_settings.ini')
-            
-            config = configparser.ConfigParser()
-            if os.path.exists(ini_path):
-                config.read(ini_path)
-                if config.has_section('OSC'):
-                    cls.server_address = config.get('OSC', 'ip', fallback='127.0.0.1')
-                    cls.server_port = config.getint('OSC', 'port', fallback=10000)
-                    cls.osc_address = config.get('OSC', 'address', fallback='/chat/message')
-                    print(f"EmoteConnect loaded OSC settings: {cls.server_address}:{cls.server_port} {cls.osc_address}")
-                    return
+            sys.path.insert(0, root_dir)
+            import config as cfg
+            cls.server_address = getattr(cfg, 'OSC_IP', '127.0.0.1')
+            cls.server_port = int(getattr(cfg, 'OSC_PORT', 10000))
+            cls.osc_address = getattr(cfg, 'OSC_ADDRESS', '/chat/message')
+            print(f"EmoteConnect loaded OSC settings: {cls.server_address}:{cls.server_port} {cls.osc_address}")
         except Exception as e:
             print(f"EmoteConnect failed to load OSC settings: {e}")
-        
-        # Fallback to config.py defaults
-        try:
-            from config import EMOTE_SERVER_ADDRESS, EMOTE_SERVER_PORT
-            cls.server_address = EMOTE_SERVER_ADDRESS
-            cls.server_port = EMOTE_SERVER_PORT
-        except:
-            pass
     
     @classmethod
     def send_emote(cls, emote_name: str):
