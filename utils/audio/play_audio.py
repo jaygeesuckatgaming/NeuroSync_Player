@@ -10,12 +10,13 @@ import io
 import time
 import os
 import sys
+import urllib.request
 import pygame
 from utils.audio.convert_audio import convert_to_wav
 
-# --- Talking animation (OSC) ---
-# The avatar's talking animation is triggered here, at the exact moment audio
-# actually plays, because this process (watcher_to_face) owns playback timing.
+# --- Talking animation (OSC) + music ducking ---
+# Both are triggered here, at the exact moment audio actually plays, because
+# this process (watcher_to_face) owns playback timing.
 
 def _load_config():
     """Import config.py from the project root (single source of truth)."""
@@ -54,10 +55,26 @@ def _send_talk_animation(value):
         print(f"⚠️ Talking animation send failed: {e}")
 
 
+def _notify_duck(action):
+    """Notify the main server (the machine playing music) to duck/unduck."""
+    try:
+        cfg = _load_config()
+        if cfg is None:
+            return
+        server_host = getattr(cfg, 'SERVER_HOST', '127.0.0.1')
+        server_port = getattr(cfg, 'SERVER_PORT', 5000)
+        url = f"http://{server_host}:{server_port}/api/music/{action}"
+        req = urllib.request.Request(url, data=b'{}', headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=2)
+    except Exception as e:
+        print(f"⚠️ Duck notify ({action}) failed: {e}")
+
+
 def _start_talking():
     cfg = _load_config()
     anim = getattr(cfg, 'AVATAR_TALK_ANIMATION', '') if cfg else ''
     _send_talk_animation(anim)
+    _notify_duck("duck")
 
 
 def _stop_talking():
@@ -66,6 +83,7 @@ def _stop_talking():
         return
     stop_anim = getattr(cfg, 'AVATAR_TALK_STOP_ANIMATION', 'idle')
     _send_talk_animation(stop_anim)
+    _notify_duck("unduck")
 
 # --- Helper Functions ---
 
@@ -120,11 +138,13 @@ def play_audio_bytes(audio_bytes, start_event, sync=True):
         audio_file = io.BytesIO(audio_bytes)
         pygame.mixer.music.load(audio_file)
         start_event.wait()  # Wait for the signal to start
+        _start_talking()
         pygame.mixer.music.play()
         if sync:
             sync_playback_loop()
         else:
             simple_playback_loop()
+        _stop_talking()
     except pygame.error as e:
         print(f"Error in play_audio_bytes: {e}")
 

@@ -193,14 +193,14 @@ if __name__ == "__main__":
                 if ENABLE_EMOTE_CALLS:
                     EmoteConnect.send_emote("startspeaking")
 
-                notify_duck("duck")
+                # Ducking is now handled inside play_audio.py at the exact
+                # play/stop moment (removed the too-early notify_duck here).
                 try:
                     process_wav_file(target_file_path, py_face, socket_connection, default_animation_thread)
                     print("✅ Processing complete.")
                 except Exception as e:
                     print(f"❌ Error during processing: {e}")
                 finally:
-                    notify_duck("unduck")
                     if ENABLE_EMOTE_CALLS:
                         EmoteConnect.send_emote("stopspeaking")
                     
