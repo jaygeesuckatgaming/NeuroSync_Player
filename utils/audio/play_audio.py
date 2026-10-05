@@ -70,19 +70,83 @@ def _notify_duck(action):
         print(f"⚠️ Duck notify ({action}) failed: {e}")
 
 
-def _start_talking():
+def _read_current_pose(audio_path=None):
+    """Read the avatar's current pose from current_pose.txt (next to the audio)."""
+    try:
+        pose_file = None
+        # Prefer the same directory as the audio being played
+        if audio_path:
+            audio_dir = os.path.dirname(os.path.abspath(audio_path))
+            candidate = os.path.join(audio_dir, 'current_pose.txt')
+            if os.path.exists(candidate):
+                pose_file = candidate
+
+        if not pose_file:
+            # Fallback: next to TTS_OUTPUT_PATH from config
+            cfg = _load_config()
+            tts_path = getattr(cfg, 'TTS_OUTPUT_PATH', '') if cfg else ''
+            if tts_path:
+                audio_dir = os.path.dirname(tts_path)
+                candidate = os.path.join(audio_dir, 'current_pose.txt')
+                if os.path.exists(candidate):
+                    pose_file = candidate
+
+        if not pose_file:
+            return ''
+
+        with open(pose_file, 'r', encoding='utf-8') as f:
+            pose = f.read().strip()
+        print(f"🎭 [pose] read '{pose}' from {pose_file}")
+        return pose
+    except Exception:
+        return ''
+
+
+_skip_talk_animation = False  # True if we left an active pose untouched at start
+
+
+def _is_base_pose(pose: str) -> bool:
+    return pose.lower() in ('', 'sitting', 'idle', 'stand', 'standing')
+
+
+def _start_talking(audio_path=None):
+    global _skip_talk_animation
     cfg = _load_config()
-    anim = getattr(cfg, 'AVATAR_TALK_ANIMATION', '') if cfg else ''
-    _send_talk_animation(anim)
+    pose = _read_current_pose(audio_path)
+    if _is_base_pose(pose):
+        # Base pose -> play the talking animation
+        anim = getattr(cfg, 'AVATAR_TALK_ANIMATION', '') if cfg else ''
+        _send_talk_animation(anim)
+        _skip_talk_animation = False
+    else:
+        # Dancing (or any active pose) -> leave the animation alone
+        print(f"🎭 Skipping talking animation (pose='{pose}')")
+        _skip_talk_animation = True
     _notify_duck("duck")
 
 
-def _stop_talking():
+def _stop_talking(audio_path=None):
+    global _skip_talk_animation
     cfg = _load_config()
     if cfg is None:
         return
-    stop_anim = getattr(cfg, 'AVATAR_TALK_STOP_ANIMATION', 'idle')
-    _send_talk_animation(stop_anim)
+    if _skip_talk_animation:
+        # We never sent a talk animation (she was already dancing), so don't
+        # touch the pose at all — just stop ducking.
+        print("🎭 [stop] pose was active at start; leaving it alone")
+        _skip_talk_animation = False
+        _notify_duck("unduck")
+        return
+    pose = _read_current_pose(audio_path)
+    print(f"🎭 [stop] pose='{pose}' base={_is_base_pose(pose)}")
+    if _is_base_pose(pose):
+        # Return to idle
+        stop_anim = getattr(cfg, 'AVATAR_TALK_STOP_ANIMATION', 'idle')
+        _send_talk_animation(stop_anim)
+    else:
+        # Restore the active pose (resume dancing)
+        _send_talk_animation(pose)
+        print(f"🎭 Restored pose after speaking: '{pose}'")
     _notify_duck("unduck")
 
 # --- Helper Functions ---
@@ -186,13 +250,13 @@ def play_audio_from_path(audio_path, start_event, sync=True):
             audio_path = convert_to_wav(audio_path)
             pygame.mixer.music.load(audio_path)
         start_event.wait()
-        _start_talking()
+        _start_talking(audio_path)
         pygame.mixer.music.play()
         if sync:
             sync_playback_loop()
         else:
             simple_playback_loop()
-        _stop_talking()
+        _stop_talking(audio_path)
     except pygame.error as e:
         print(f"Error in play_audio_from_path: {e}")
 
