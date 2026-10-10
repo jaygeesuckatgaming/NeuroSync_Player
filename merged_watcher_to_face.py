@@ -16,6 +16,8 @@
 import os
 import sys
 import time
+import queue
+import threading
 import warnings
 
 # --- Locate project directories -------------------------------------------------
@@ -72,6 +74,8 @@ from utils.files.file_utils import initialize_directories, save_generated_data_f
 
 import config as cfg  # project root single source of truth
 
+from flask import Flask, request
+
 try:
     import sounddevice as sd  # noqa: F401  (kept for parity with watcher)
 except ImportError:
@@ -107,6 +111,25 @@ def delete_file_with_retry(filepath, max_retries=5, delay=0.2):
             return False
     print(f"❌ FAILED to delete file '{os.path.basename(filepath)}'.")
     return False
+
+
+def start_audio_listener(audio_queue, listen_port):
+    """Run a small Flask server that receives pushed WAV bytes from StyleTTS2
+    over the LAN and enqueues them for processing. Bound to 0.0.0.0 so it's
+    reachable cross-machine."""
+    listener = Flask("audio_listener")
+    listener.logger.setLevel("ERROR")
+
+    @listener.route("/audio", methods=["POST"])
+    def receive_audio():
+        data = request.get_data()
+        if not data:
+            return "no data", 400
+        audio_queue.put(data)
+        print(f"📥 Received pushed audio ({len(data)} bytes) via HTTP.")
+        return "ok", 200
+
+    listener.run(host="0.0.0.0", port=listen_port, threaded=True)
 
 
 if __name__ == "__main__":
@@ -165,8 +188,44 @@ if __name__ == "__main__":
     py_face = initialize_py_face()
     socket_connection = create_socket_connection()
 
-    default_animation_thread = __import__("threading").Thread(target=default_animation_loop, args=(py_face,))
+    default_animation_thread = threading.Thread(target=default_animation_loop, args=(py_face,))
     default_animation_thread.start()
+
+    # --- HTTP listener for pushed audio (cross-machine, bound 0.0.0.0) ---
+    audio_queue = queue.Queue()
+    listen_port = int(getattr(cfg, "NEUROSYNC_AUDIO_LISTEN_PORT", 13310))
+    listener_thread = threading.Thread(
+        target=start_audio_listener, args=(audio_queue, listen_port), daemon=True
+    )
+    listener_thread.start()
+    print(f"Listening for pushed audio on 0.0.0.0:{listen_port}")
+
+    def process_audio(audio_bytes, source="?"):
+        """Run inference + playback for one audio payload (bytes)."""
+        try:
+            blendshapes = generate_facial_data_from_bytes(
+                audio_bytes, blendshape_model, DEVICE, MODEL_CONFIG
+            )
+            if blendshapes is None or len(blendshapes) == 0:
+                print("❌ Failed to generate blendshapes.")
+                return
+            run_audio_animation(
+                audio_bytes, blendshapes,
+                py_face, socket_connection, default_animation_thread,
+            )
+            print(f"✅ Processing complete (source: {source}).")
+        except Exception as e:
+            print(f"❌ Error during processing: {e}")
+
+    # Worker: drain pushed-audio queue one at a time (preserves serialized playback)
+    def audio_worker():
+        while True:
+            audio_bytes = audio_queue.get()
+            process_audio(audio_bytes, source="http-push")
+            audio_queue.task_done()
+
+    worker_thread = threading.Thread(target=audio_worker, daemon=True)
+    worker_thread.start()
 
     print("--- Merged processor started ---")
     print(f"Watching for file: {target_file_path}")
@@ -187,21 +246,7 @@ if __name__ == "__main__":
                     if audio_bytes is None:
                         print("❌ Failed to read audio bytes.")
                     else:
-                        # --- THE MERGE: direct in-process inference (no HTTP) ---
-                        blendshapes = generate_facial_data_from_bytes(
-                            audio_bytes, blendshape_model, DEVICE, MODEL_CONFIG
-                        )
-
-                        if blendshapes is None or len(blendshapes) == 0:
-                            print("❌ Failed to generate blendshapes.")
-                        else:
-                            run_audio_animation(
-                                target_file_path, blendshapes,
-                                py_face, socket_connection, default_animation_thread,
-                            )
-                            # Optional: still persist the result (parity with watcher)
-                            save_generated_data_from_wav(target_file_path, blendshapes)
-                            print("✅ Processing complete.")
+                        process_audio(audio_bytes, source="file-poll")
                 except Exception as e:
                     print(f"❌ Error during processing: {e}")
                 finally:
